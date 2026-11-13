@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0c1410">
+<title>CXF Field Map</title>
+<link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon.png">
+<link rel="stylesheet" href="leaflet.css">
+<style>
+:root{--bg:#0c1410;--panel:rgba(12,20,16,.92);--ink:#f2f5f0;--dim:#9db0a4;--line:#2c4034;--go:#3fa9ff;--warn:#ffd21f;--stop:#ff5a46}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px/1.35 -apple-system,system-ui,sans-serif;overflow:hidden}
+#map{position:fixed;inset:0;background:#0c1410}
+#top{position:fixed;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 6px) 12px 8px;background:linear-gradient(var(--panel),rgba(12,20,16,.55));z-index:1000;font-size:13px;display:flex;justify-content:space-between;gap:10px;pointer-events:none}
+#top b{font-size:15px}
+#gps{text-align:right;font-variant-numeric:tabular-nums}
+#film-banner{display:none;position:fixed;top:calc(env(safe-area-inset-top) + 52px);left:50%;transform:translateX(-50%);z-index:1001;background:var(--stop);color:#fff;font-weight:700;padding:6px 14px;border-radius:20px;font-size:13px;white-space:nowrap}
+body.film #film-banner{display:block} body.film #gps .coord{visibility:hidden}
+#bar{position:fixed;left:0;right:0;bottom:0;z-index:1000;display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:8px 8px calc(env(safe-area-inset-bottom) + 8px);background:var(--panel);border-top:1px solid var(--line)}
+button{font:inherit;color:var(--ink);background:#1b2a22;border:1px solid var(--line);border-radius:12px;padding:12px 4px;min-height:52px;font-weight:600}
+button.on{background:var(--go);border-color:var(--go);color:#001a33}
+button.big{background:var(--warn);color:#1a1500;border-color:var(--warn)}
+button.danger{background:transparent;border-color:var(--stop);color:var(--stop)}
+#cross{position:fixed;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;z-index:900;pointer-events:none;display:none}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;box-shadow:0 0 0 1px #000}
+#cross:before{left:16px;top:0;width:2px;height:34px}#cross:after{top:16px;left:0;height:2px;width:34px}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:2000;background:var(--bg);border-top:2px solid var(--line);border-radius:18px 18px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom) + 16px);max-height:82vh;overflow:auto;display:none}
+.sheet.open{display:block}
+.sheet h2{margin:0 0 10px;font-size:19px}
+.row{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}.row>*{flex:1}
+label{display:block;font-size:13px;color:var(--dim);margin:10px 0 4px}
+select,textarea,input[type=text]{width:100%;font:inherit;color:var(--ink);background:#14201a;border:1px solid var(--line);border-radius:10px;padding:11px}
+textarea{min-height:84px}
+.item{border:1px solid var(--line);border-radius:12px;padding:10px;margin:8px 0;display:flex;gap:10px;align-items:center}
+.item img{width:64px;height:64px;object-fit:cover;border-radius:8px}
+.item .t{flex:1;min-width:0}.item small{color:var(--dim)}
+.badge{display:flex;align-items:center;justify-content:center;border-radius:50%;font-weight:800;border:2px solid #000;box-shadow:0 0 0 1px #fff}
+.b-known{background:#fff;color:#003ca0}.b-theory{background:#ffdc00;color:#000}.b-find{background:#ff5a46;color:#fff}.b-reading{background:#b18cff;color:#000}.b-camera{background:#3fa9ff;color:#000}.b-note{background:#9db0a4;color:#000}
+.hint{color:var(--dim);font-size:13px;margin:6px 0}
+.leaflet-container{background:#0c1410}.leaflet-control-attribution{font-size:9px}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 84px);transform:translateX(-50%);z-index:3000;background:#000;color:#fff;padding:9px 14px;border-radius:20px;font-size:14px;display:none;max-width:90vw;text-align:center}
+</style></head><body>
+<div id="map"></div><div id="cross"></div>
+<div id="top"><div><b>CXF Field Map</b><br><span id="site"></span></div><div id="gps">GPS off</div></div>
+<div id="film-banner">FILMING MODE: locations hidden</div>
+<div id="bar">
+  <button id="b-loc">Locate</button>
+  <button id="b-log" class="big">Log</button>
+  <button id="b-list">List</button>
+  <button id="b-film">Film</button>
+  <button id="b-more">More</button>
+</div>
+<div class="sheet" id="s-log">
+  <h2>Log entry <span id="log-n"></span></h2>
+  <label>Type</label>
+  <select id="f-type"><option value="find">Find (something on the ground)</option><option value="reading">Reading (EMF, temp, audio)</option><option value="camera">Camera position</option><option value="note">Note</option></select>
+  <label>Where</label>
+  <div class="row"><button id="w-gps" class="on">My GPS position</button><button id="w-map">Map crosshair</button></div>
+  <div class="hint" id="w-hint"></div>
+  <label>Note</label><textarea id="f-note" placeholder="What is it? What did you measure? Photograph only, touch nothing."></textarea>
+  <label>Photo (optional)</label><input type="file" id="f-photo" accept="image/*" capture="environment">
+  <div class="row"><button id="log-cancel">Cancel</button><button id="log-save" class="big">Save</button></div>
+</div>
+<div class="sheet" id="s-list"><h2>Logged entries</h2><div id="list"></div><div class="row"><button class="close">Close</button></div></div>
+<div class="sheet" id="s-more">
+  <h2>More</h2>
+  <div class="row"><button id="m-track">Start track</button><button id="m-fit">Whole mountain</button></div>
+  <label>Private markers (stay on this phone only)</label>
+  <input type="file" id="m-import" accept=".json,application/json">
+  <div class="hint" id="m-priv"></div>
+  <label>Export everything logged</label>
+  <div class="row"><button id="m-export">Export log (JSON + photos)</button><button id="m-csv">Export CSV</button></div>
+  <label>Danger zone</label>
+  <div class="row"><button id="m-clearpriv" class="danger">Remove private markers</button><button id="m-clear" class="danger">Erase log</button></div>
+  <div class="hint">Sacred site. Photograph only, collect nothing, stay out of the caves. No drones past the park boundary.</div>
+  <div class="row"><button class="close">Close</button></div>
+</div>
+<div id="toast"></div>
+<script src="leaflet.js"></script><script src="config.js"></script>
+<script>
+(function(){
+const $=id=>document.getElementById(id), CFG=window.CFG;
+$('site').textContent=CFG.name;
+const toast=(m,ms)=>{const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',ms||2600)};
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){toast('Storage is full or blocked')}}};
+// --- tiny IndexedDB store for log entries (photos included)
+let dbp=new Promise((res,rej)=>{try{const r=indexedDB.open('cxf-field',1);r.onupgradeneeded=()=>r.result.createObjectStore('log',{keyPath:'id',autoIncrement:true});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}});
+const tx=(mode,fn)=>dbp.then(db=>new Promise((res,rej)=>{const t=db.transaction('log',mode),s=t.objectStore('log');const q=fn(s);t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error)}));
+const allLog=()=>tx('readonly',s=>s.getAll()).catch(()=>[]);
+// --- map
+const map=L.map('map',{zoomControl:false,maxZoom:21,minZoom:12,attributionControl:true});
+const B=L.latLngBounds(CFG.bounds);
+L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:16,maxZoom:21,attribution:'USGS The National Map'}).addTo(map);
+L.imageOverlay(CFG.base,B,{attribution:'USGS imagery and contours'}).addTo(map);
+map.fitBounds(B);
+const privLayer=L.layerGroup().addTo(map), logLayer=L.layerGroup().addTo(map), trackLine=L.polyline([],{color:'#3fa9ff',weight:4,opacity:.85}).addTo(map);
+const badge=(txt,cls,size)=>L.divIcon({className:'',html:'<div class="badge '+cls+'" style="width:'+size+'px;height:'+size+'px;font-size:'+Math.round(size*.5)+'px">'+txt+'</div>',iconSize:[size,size],iconAnchor:[size/2,size/2]});
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function drawPriv(){privLayer.clearLayers();const ms=LS.get('cxf_priv',[]);
+  ms.forEach(m=>{if(m.radius_m)L.circle([m.lat,m.lon],{radius:m.radius_m,color:'#ffdc00',weight:2,fillOpacity:.12}).addTo(privLayer);
+    L.marker([m.lat,m.lon],{icon:badge(esc(m.id),m.type==='theory'?'b-theory':'b-known',30)}).bindPopup('<b>'+esc(m.id)+'</b> '+esc(m.label)+(m.type==='theory'?'<br><i>Theory, unverified</i>':'')).addTo(privLayer)});
+  $('m-priv').textContent=ms.length?ms.length+' private markers loaded on this phone.':'None loaded. Choose your private markers file.'}
+const fmt=t=>new Date(t).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+async function drawLog(){logLayer.clearLayers();const es=await allLog();
+  es.forEach(e=>L.marker([e.lat,e.lon],{icon:badge(e.n,'b-'+e.type,28)}).bindPopup('<b>#'+e.n+' '+esc(e.type)+'</b><br>'+esc(e.note)+'<br><small>'+fmt(e.t)+'</small>'+(e.photo?'<br><img src="'+e.photo+'" style="width:180px;border-radius:6px">':'')).addTo(logLayer));
+  const el=$('list');el.innerHTML=es.length?'':'<div class="hint">Nothing logged yet.</div>';
+  es.slice().reverse().forEach(e=>{const d=document.createElement('div');d.className='item';
+    d.innerHTML=(e.photo?'<img src="'+e.photo+'">':'')+'<div class="t"><b>#'+e.n+' '+esc(e.type)+'</b><br>'+esc(e.note||'(no note)')+'<br><small>'+fmt(e.t)+' · '+e.lat.toFixed(5)+', '+e.lon.toFixed(5)+(e.acc?' · ±'+Math.round(e.acc)+' m':'')+'</small></div>';
+    const go=document.createElement('button');go.textContent='Show';go.style.flex='0 0 70px';go.onclick=()=>{closeSheets();map.setView([e.lat,e.lon],19)};d.appendChild(go);
+    const del=document.createElement('button');del.textContent='Del';del.className='danger';del.style.flex='0 0 56px';del.onclick=()=>{if(del.dataset.arm){tx('readwrite',s=>s.delete(e.id)).then(drawLog)}else{del.dataset.arm=1;del.textContent='Sure?'}};d.appendChild(del);
+    el.appendChild(d)});
+  return es}
+// --- GPS
+let pos=null,follow=false,watch=null,dot=null,ring=null,tracking=false,track=LS.get('cxf_track',[]);
+trackLine.setLatLngs(track.map(p=>[p[0],p[1]]));
+const dist=(a,b)=>map.distance(a,b);
+function onPos(p){pos={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy,alt:p.coords.altitude,t:p.timestamp};
+  const ll=[pos.lat,pos.lon];
+  if(!dot){ring=L.circle(ll,{radius:pos.acc,color:'#3fa9ff',weight:1,fillOpacity:.12}).addTo(map);dot=L.circleMarker(ll,{radius:9,color:'#fff',weight:3,fillColor:'#3fa9ff',fillOpacity:1}).addTo(map)}
+  else{dot.setLatLng(ll);ring.setLatLng(ll).setRadius(pos.acc)}
+  $('gps').innerHTML='<span class="coord">'+pos.lat.toFixed(5)+', '+pos.lon.toFixed(5)+'</span><br>±'+Math.round(pos.acc)+' m'+(pos.alt!=null?' · '+Math.round(pos.alt*3.28084)+' ft':'')+(B.contains(ll)?'':' · off map');
+  if(follow)map.panTo(ll,{animate:true});
+  if(tracking){const last=track[track.length-1];if(!last||dist([last[0],last[1]],ll)>5){track.push([+pos.lat.toFixed(6),+pos.lon.toFixed(6),pos.t]);trackLine.addLatLng(ll);if(track.length%5===0)LS.set('cxf_track',track)}}}
+function onErr(e){$('gps').textContent=e.code===1?'Location blocked. Allow it in Settings > Safari.':'Searching for GPS...'}
+function startGPS(){if(!navigator.geolocation){$('gps').textContent='No GPS on this device';return}
+  if(watch==null){$('gps').textContent='Searching for GPS...';watch=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:2000,timeout:20000})}}
+$('b-loc').onclick=()=>{startGPS();follow=!follow;$('b-loc').classList.toggle('on',follow);$('b-loc').textContent=follow?'Following':'Locate';if(pos)map.setView([pos.lat,pos.lon],Math.max(map.getZoom(),18))};
+map.on('dragstart',()=>{if(follow){follow=false;$('b-loc').classList.remove('on');$('b-loc').textContent='Locate'}});
+// --- sheets
+function closeSheets(){document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));$('cross').style.display='none'}
+document.querySelectorAll('.close').forEach(b=>b.onclick=closeSheets);
+let where='gps';
+function setWhere(w){where=w;$('w-gps').classList.toggle('on',w==='gps');$('w-map').classList.toggle('on',w==='map');$('cross').style.display=w==='map'?'block':'none';
+  $('w-hint').textContent=w==='gps'?(pos?'Using your position, accurate to about '+Math.round(pos.acc)+' m.':'No GPS fix yet. Tap Locate first, or use the map crosshair.'):'Drag the map so the crosshair sits on the spot.'}
+$('w-gps').onclick=()=>setWhere('gps');$('w-map').onclick=()=>setWhere('map');
+$('b-log').onclick=async()=>{startGPS();closeSheets();const es=await allLog();$('log-n').textContent='#'+((es.reduce((m,e)=>Math.max(m,e.n),0))+1);$('f-note').value='';$('f-photo').value='';$('s-log').classList.add('open');setWhere(pos?'gps':'map')};
+$('log-cancel').onclick=closeSheets;
+function readPhoto(file){return new Promise(res=>{if(!file)return res(null);const img=new Image(),u=URL.createObjectURL(file);img.onload=()=>{const k=Math.min(1,1600/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',.82))};img.onerror=()=>res(null);img.src=u})}
+$('log-save').onclick=async()=>{let la,lo,acc=null,alt=null;
+  if(where==='gps'){if(!pos){toast('No GPS fix yet');return}la=pos.lat;lo=pos.lon;acc=pos.acc;alt=pos.alt}else{const c=map.getCenter();la=c.lat;lo=c.lng}
+  const es=await allLog(),n=es.reduce((m,e)=>Math.max(m,e.n),0)+1,photo=await readPhoto($('f-photo').files[0]);
+  const e={n,type:$('f-type').value,note:$('f-note').value.trim(),lat:+la.toFixed(6),lon:+lo.toFixed(6),acc,alt,t:Date.now(),src:where,photo};
+  try{await tx('readwrite',s=>s.add(e));closeSheets();await drawLog();toast('Saved #'+n)}catch(err){toast('Could not save: '+err)}};
+$('b-list').onclick=async()=>{closeSheets();await drawLog();$('s-list').classList.add('open')};
+$('b-more').onclick=()=>{closeSheets();$('s-more').classList.add('open')};
+// --- filming mode
+$('b-film').onclick=()=>{const on=document.body.classList.toggle('film');$('b-film').classList.toggle('on',on);
+  if(on){map.removeLayer(privLayer);map.removeLayer(logLayer);map.removeLayer(trackLine);map.closePopup()}else{privLayer.addTo(map);logLayer.addTo(map);trackLine.addTo(map)}};
+// --- more
+$('m-fit').onclick=()=>{closeSheets();map.fitBounds(B)};
+$('m-track').onclick=()=>{startGPS();tracking=!tracking;$('m-track').classList.toggle('on',tracking);$('m-track').textContent=tracking?'Stop track':'Start track';if(!tracking)LS.set('cxf_track',track);toast(tracking?'Recording your path':'Track stopped, '+track.length+' points')};
+$('m-import').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result),ms=(j.markers||j).filter(m=>isFinite(m.lat)&&isFinite(m.lon));LS.set('cxf_priv',ms);drawPriv();toast(ms.length+' private markers loaded')}catch(err){toast('That file could not be read')}};r.readAsText(f)};
+function armed(btn,fn){btn.onclick=()=>{if(btn.dataset.arm){delete btn.dataset.arm;btn.textContent=btn.dataset.label;fn()}else{btn.dataset.label=btn.textContent;btn.dataset.arm=1;btn.textContent='Tap again to confirm'}}}
+armed($('m-clearpriv'),()=>{LS.set('cxf_priv',[]);drawPriv();toast('Private markers removed')});
+armed($('m-clear'),()=>{tx('readwrite',s=>s.clear()).then(()=>{track=[];LS.set('cxf_track',track);trackLine.setLatLngs([]);drawLog();toast('Log erased')})});
+async function give(name,type,text){const file=new File([text],name,{type});
+  try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});return}}catch(e){if(e&&e.name==='AbortError')return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;document.body.appendChild(a);a.click();a.remove()}
+const stamp=()=>new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+$('m-export').onclick=async()=>{const es=await allLog();give('cxf-field-log-'+stamp()+'.json','application/json',JSON.stringify({site:CFG.name,exported:new Date().toISOString(),entries:es,track},null,1))};
+$('m-csv').onclick=async()=>{const es=await allLog(),q=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
+  give('cxf-field-log-'+stamp()+'.csv','text/csv',['n,type,note,lat,lon,accuracy_m,elevation_ft,time,placed_by'].concat(es.map(e=>[e.n,e.type,q(e.note),e.lat,e.lon,e.acc?Math.round(e.acc):'',e.alt!=null?Math.round(e.alt*3.28084):'',new Date(e.t).toISOString(),e.src].join(','))).join('\n'))};
+drawPriv();drawLog();
+if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+window.__cxf={map,allLog};
+})();
+</script></body></html>
